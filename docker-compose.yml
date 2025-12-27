@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: dlp
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  policy-service:
+    build: ./policy_service
+    environment:
+      PORT: 3002
+      DATABASE_URL: postgresql+psycopg2://user:admin@postgres:5432/dlp
+    ports:
+      - "3002:3002"
+    depends_on:
+      - postgres
+
+  config-service:
+    build: ./config_service
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql+psycopg2://user:admin@postgres:5432/dlp
+      POLICY_SERVICE_URL: http://policy-service:3002
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+      - policy-service
+
+  scanner-service:
+    build: ./scanner_service
+    environment:
+      PORT: 3003
+      DATABASE_URL: postgresql+psycopg2://user:admin@postgres:5432/dlp
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "3003:3003"
+    depends_on:
+      - postgres
+      - redis
+
+  scanner-worker:
+    build: ./scanner_service
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:admin@postgres:5432/dlp
+      REDIS_URL: redis://redis:6379/0
+    command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=INFO", "-Q", "scan_jobs"]
+    depends_on:
+      - postgres
+      - redis
